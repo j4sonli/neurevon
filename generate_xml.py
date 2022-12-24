@@ -1,12 +1,17 @@
 import numpy as np
 from settings import get_settings
 
-N_OBJECTS, BALL_SIZE, BOX_SIZE, XML_PATH = get_settings()
+N_OBJECTS, BALL_SIZE, BOX_SIZE, XML_PATH, CHARGES = get_settings()
 
 def arr_to_spaced(arr):
     return ' '.join(str(x) for x in arr)
 
-XML = '<mujoco>\n\t<option gravity="0 0 0"/>\n\t<worldbody>\n'
+def charge_color(charge):
+    max_charge, min_charge = np.max(CHARGES), np.min(CHARGES)
+    rel_charge = (charge - min_charge) / (max_charge - min_charge)
+    return np.array([rel_charge, 0, 1-rel_charge, 1])
+
+XML = '<mujoco>\n\t<option gravity="0 0 0" timestep="0.01"/>\n\t<worldbody>\n'
 
 box_face_pos = [[BOX_SIZE/2, BOX_SIZE/2, 0,],
                 [BOX_SIZE/2, BOX_SIZE/2, BOX_SIZE],
@@ -29,10 +34,11 @@ for face, ori in zip(box_face_pos, box_face_orientations):
 XML += '\n'
 
 coords = (np.random.rand(N_OBJECTS, 3)-0.5) * BOX_SIZE/2 + BOX_SIZE/2
+charge_colors = [charge_color(charge) for charge in CHARGES]
 for i in range(N_OBJECTS):
     XML += '\t\t<body pos="{}">\n'.format(arr_to_spaced(coords[i])) +\
            '\t\t\t<joint type="free"/>\n' \
-           '\t\t\t<geom type="sphere" size="{} {} {}" rgba="0 .9 0 1"/>\n'.format(BALL_SIZE, BALL_SIZE, BALL_SIZE) +\
+           '\t\t\t<geom type="sphere" size="{} {} {}" rgba="{}"/>\n'.format(BALL_SIZE, BALL_SIZE, BALL_SIZE, arr_to_spaced(charge_colors[i])) +\
            '\t\t</body>\n'
     XML += '\n'
 

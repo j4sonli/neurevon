@@ -4,27 +4,44 @@ import numpy as np
 from settings import get_settings
 from generate_xml import generate_XML_file
 
-N_OBJECTS, BALL_SIZE, BOX_SIZE, XML_PATH = get_settings()
+N_OBJECTS, BALL_SIZE, BOX_SIZE, XML_PATH, CHARGES = get_settings()
 
 generate_XML_file()
 
 sim_time = 60  # seconds
 print_camera_config = 0  # set to 1 to print camera config
 
+masses = np.zeros(N_OBJECTS) + 2.99e-26  # kg
+k_e = 8.987e9
+
+def init_controller(model, data):
+    # data.qvel[:] = (np.random.rand(N_OBJECTS * 6) - 0.5) * 6
+    pass
+
+def controller(model, data):
+    coulomb_forces = np.zeros((N_OBJECTS, 3))
+    for i in range(N_OBJECTS):
+        if CHARGES[i] == 0:
+            continue
+        for j in range(i+1, N_OBJECTS):
+            if CHARGES[j] == 0:
+                continue
+            v = data.xpos[i+7] - data.xpos[j+7]
+            r = np.linalg.norm(v)
+            force = k_e * CHARGES[i] * CHARGES[j] / r**2
+            coulomb_forces[i] += force * v / r
+            coulomb_forces[j] += force * -v / r
+    # accels = coulomb_forces / masses.reshape(-1, 1)
+    for i in range(N_OBJECTS):
+        data.xfrc_applied[i+7][:3] = coulomb_forces[i] * 1e31
+
+########################################################################################################################
 # For callback functions
 button_left = False
 button_middle = False
 button_right = False
 lastx = 0
 lasty = 0
-
-def init_controller(model, data):
-    data.qvel[:] = (np.random.rand(N_OBJECTS * 6) - 0.5) * 6
-
-def controller(model, data):
-
-
-    data.qvel[:] += (np.random.rand(N_OBJECTS * 6) - 0.5) * 0.5
 
 def keyboard(window, key, scancode, act, mods):
     if act == glfw.PRESS and key == glfw.KEY_BACKSPACE:
@@ -90,11 +107,10 @@ def scroll(window, xoffset, yoffset):
     mj.mjv_moveCamera(model, action, 0.0, -0.05 * yoffset, scene, cam)
 
 
-# MuJoCo data structures
-model = mj.MjModel.from_xml_path(XML_PATH)  # MuJoCo model
-data = mj.MjData(model)                # MuJoCo data
-cam = mj.MjvCamera()                        # Abstract camera
-opt = mj.MjvOption()                        # visualization options
+model = mj.MjModel.from_xml_path(XML_PATH)
+data = mj.MjData(model)
+cam = mj.MjvCamera()
+opt = mj.MjvOption()
 
 glfw.init()
 window = glfw.create_window(1200, 900, 'Demo', None, None)
