@@ -4,7 +4,7 @@ import numpy as np
 from settings import get_settings
 from generate_xml import generate_XML_file
 
-N_OBJECTS, BALL_SIZE, BOX_SIZE, XML_PATH, CHARGES = get_settings()
+N_OBJECTS, BALL_SIZE, BOX_SIZE, XML_PATH, CHARGES, VALENCE_E, VALENCE_E_CAP = get_settings()
 
 generate_XML_file()
 
@@ -13,27 +13,71 @@ print_camera_config = 0  # set to 1 to print camera config
 
 masses = np.zeros(N_OBJECTS) + 2.99e-26  # kg
 k_e = 8.987e9
+EFF_VALENCE_E = VALENCE_E.copy()
+COVALENT_FORCE = 1e5
+COVALENT_BONDS_adj = {}
+COVALENT_BONDS_edge = []
+VSEPR_FORCE = 2e4
+
+
+def add_covalent_bond(i1, i2):
+    COVALENT_BONDS_edge.append((i1, i2))
+    COVALENT_BONDS_adj.setdefault(i1, []).append(i2)
+    COVALENT_BONDS_adj.setdefault(i2, []).append(i1)
+
 
 def init_controller(model, data):
-    # data.qvel[:] = (np.random.rand(N_OBJECTS * 6) - 0.5) * 6
+    data.qvel[:] = (np.random.rand(N_OBJECTS * 6) - 0.5) * 60
     pass
 
+
 def controller(model, data):
+    ## Coulomb force
     coulomb_forces = np.zeros((N_OBJECTS, 3))
     for i in range(N_OBJECTS):
         if CHARGES[i] == 0:
             continue
-        for j in range(i+1, N_OBJECTS):
+        for j in range(i + 1, N_OBJECTS):
             if CHARGES[j] == 0:
                 continue
-            v = data.xpos[i+7] - data.xpos[j+7]
+            v = data.xpos[i + 7] - data.xpos[j + 7]
             r = np.linalg.norm(v)
-            force = k_e * CHARGES[i] * CHARGES[j] / r**2
+            force = k_e * CHARGES[i] * CHARGES[j] / r ** 2
             coulomb_forces[i] += force * v / r
             coulomb_forces[j] += force * -v / r
     # accels = coulomb_forces / masses.reshape(-1, 1)
     for i in range(N_OBJECTS):
-        data.xfrc_applied[i+7][:3] = coulomb_forces[i] * 1e31
+        data.xfrc_applied[i + 7][:3] = coulomb_forces[i] * 1e31
+
+    ## Covalent bonding
+    for i1, i2 in zip(data.contact.geom1, data.contact.geom2):
+        i1, i2 = i1 - 6, i2 - 6
+        if i1 < 0 or i2 < 0:
+            continue
+        if i1 in COVALENT_BONDS_adj and i2 in COVALENT_BONDS_adj[i1]:
+            continue
+        if EFF_VALENCE_E[i1] < VALENCE_E_CAP[i1] and EFF_VALENCE_E[i2] < VALENCE_E_CAP[i2]:
+            e_to_share = min(VALENCE_E_CAP[i1] - EFF_VALENCE_E[i1], VALENCE_E_CAP[i2] - EFF_VALENCE_E[i2])
+            EFF_VALENCE_E[i1] += e_to_share
+            EFF_VALENCE_E[i2] += e_to_share
+            add_covalent_bond(i1, i2)
+    ## attractive covalent force
+    for i1, i2 in COVALENT_BONDS_edge:
+        v = data.xpos[i1 + 7] - data.xpos[i2 + 7]
+        data.xfrc_applied[i1 + 7][:3] += -v * COVALENT_FORCE
+        data.xfrc_applied[i2 + 7][:3] += v * COVALENT_FORCE
+    ## repulsive force around covalent bonds
+    for _, adj in COVALENT_BONDS_adj.items():
+        for i in range(len(adj)):
+            for j in range(i + 1, len(adj)):
+                v = data.xpos[adj[i] + 7] - data.xpos[adj[j] + 7]
+                data.xfrc_applied[adj[i] + 7][:3] += v * VSEPR_FORCE
+                data.xfrc_applied[adj[j] + 7][:3] += -v * VSEPR_FORCE
+
+    for i in range(N_OBJECTS):
+        if i not in COVALENT_BONDS_adj.keys():
+            data.xfrc_applied[i + 7][:3] += (np.random.rand(3) - 0.5) * 10000
+
 
 ########################################################################################################################
 # For callback functions
@@ -43,10 +87,12 @@ button_right = False
 lastx = 0
 lasty = 0
 
+
 def keyboard(window, key, scancode, act, mods):
     if act == glfw.PRESS and key == glfw.KEY_BACKSPACE:
         mj.mj_resetData(model, data)
         mj.mj_forward(model, data)
+
 
 def mouse_button(window, button, act, mods):
     # update button state
@@ -60,6 +106,7 @@ def mouse_button(window, button, act, mods):
 
     # update mouse position
     glfw.get_cursor_pos(window)
+
 
 def mouse_move(window, xpos, ypos):
     # compute mouse displacement, save
@@ -100,7 +147,8 @@ def mouse_move(window, xpos, ypos):
     else:
         action = mj.mjtMouse.mjMOUSE_ZOOM
 
-    mj.mjv_moveCamera(model, action, dx/height, dy/height, scene, cam)
+    mj.mjv_moveCamera(model, action, dx / height, dy / height, scene, cam)
+
 
 def scroll(window, xoffset, yoffset):
     action = mj.mjtMouse.mjMOUSE_ZOOM
@@ -130,7 +178,7 @@ glfw.set_scroll_callback(window, scroll)
 cam.azimuth = -135
 cam.elevation = -45
 cam.distance = 25
-cam.lookat = np.array([BOX_SIZE/2, BOX_SIZE/2, BOX_SIZE/2])
+cam.lookat = np.array([BOX_SIZE / 2, BOX_SIZE / 2, BOX_SIZE / 2])
 
 ########################################################################################################################
 
@@ -140,7 +188,7 @@ mj.set_mjcb_control(controller)
 while not glfw.window_should_close(window):
     time_prev = data.time
 
-    while data.time - time_prev < 1/60:
+    while data.time - time_prev < 1 / 60:
         mj.mj_step(model, data)
 
     if data.time >= sim_time:
