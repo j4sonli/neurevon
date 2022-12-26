@@ -1,7 +1,7 @@
 import numpy as np
 from settings import get_settings
 
-N_OBJECTS, BALL_SIZE, BOX_SIZE, XML_PATH, CHARGES, VALENCE_E, VALENCE_E_CAP = get_settings()
+N_OBJECTS, BALL_SIZE, BOX_SIZE, XML_PATH, MASSES, CHARGES, VALENCE_E, VALENCE_E_CAP = get_settings()
 
 def arr_to_spaced(arr):
     return ' '.join(str(x) for x in arr)
@@ -15,7 +15,7 @@ def charge_color(charge):
 
 XML = '<mujoco>\n'
 
-XML += '\t<option gravity="0 0 0" timestep="0.01" o_margin="0.01"/>\n'
+XML += '\t<option gravity="0 0 0" timestep="0.007"/>\n'
 
 XML += '\t<worldbody>\n'
 
@@ -39,12 +39,12 @@ for i, (face, ori) in enumerate(zip(box_face_pos, box_face_orientations)):
 
 XML += '\n'
 
-coords = (np.random.rand(N_OBJECTS, 3)-0.5) * BOX_SIZE/2 + BOX_SIZE/2
+coords = np.random.rand(N_OBJECTS, 3) * (BOX_SIZE - BALL_SIZE) + BALL_SIZE
 charge_colors = [charge_color(charge) for charge in CHARGES]
 for i in range(N_OBJECTS):
     XML += '\t\t<body name="{}" pos="{}">\n'.format(i, arr_to_spaced(coords[i])) +\
            '\t\t\t<joint type="free"/>\n' \
-           '\t\t\t<geom name="{}" type="sphere" margin="0" size="{} {} {}" rgba="{}"/>\n'.format(i, BALL_SIZE, BALL_SIZE, BALL_SIZE, arr_to_spaced(charge_colors[i])) +\
+           '\t\t\t<geom name="{}" type="sphere" mass="{}" condim="6" size="{} {} {}" rgba="{}"/>\n'.format(i, MASSES[i], BALL_SIZE, BALL_SIZE, BALL_SIZE, arr_to_spaced(charge_colors[i])) +\
            '\t\t</body>\n'
     XML += '\n'
 

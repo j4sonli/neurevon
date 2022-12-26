@@ -4,20 +4,21 @@ import numpy as np
 from settings import get_settings
 from generate_xml import generate_XML_file
 
-N_OBJECTS, BALL_SIZE, BOX_SIZE, XML_PATH, CHARGES, VALENCE_E, VALENCE_E_CAP = get_settings()
+N_OBJECTS, BALL_SIZE, BOX_SIZE, XML_PATH, MASSES, CHARGES, VALENCE_E, VALENCE_E_CAP = get_settings()
 
 generate_XML_file()
 
-sim_time = 60  # seconds
+sim_time = 180  # seconds
 print_camera_config = 0  # set to 1 to print camera config
 
-masses = np.zeros(N_OBJECTS) + 2.99e-26  # kg
-k_e = 8.987e9
+k_e = 1e1  # N m^2 C^(-2)
 EFF_VALENCE_E = VALENCE_E.copy()
-COVALENT_FORCE = 1e5
+COVALENT_FORCE = 1e4  # N
 COVALENT_BONDS_adj = {}
 COVALENT_BONDS_edge = []
-VSEPR_FORCE = 2e4
+VSEPR_FORCE = COVALENT_FORCE/5  # N
+
+FREE_SWIMMING_FORCE = 1e2  # N
 
 
 def add_covalent_bond(i1, i2):
@@ -27,7 +28,7 @@ def add_covalent_bond(i1, i2):
 
 
 def init_controller(model, data):
-    data.qvel[:] = (np.random.rand(N_OBJECTS * 6) - 0.5) * 60
+    # data.qvel[:] = (np.random.rand(N_OBJECTS * 6) - 0.5) * 60
     pass
 
 
@@ -47,7 +48,7 @@ def controller(model, data):
             coulomb_forces[j] += force * -v / r
     # accels = coulomb_forces / masses.reshape(-1, 1)
     for i in range(N_OBJECTS):
-        data.xfrc_applied[i + 7][:3] = coulomb_forces[i] * 1e31
+        data.xfrc_applied[i + 7][:3] = coulomb_forces[i]
 
     ## Covalent bonding
     for i1, i2 in zip(data.contact.geom1, data.contact.geom2):
@@ -76,7 +77,7 @@ def controller(model, data):
 
     for i in range(N_OBJECTS):
         if i not in COVALENT_BONDS_adj.keys():
-            data.xfrc_applied[i + 7][:3] += (np.random.rand(3) - 0.5) * 10000
+            data.xfrc_applied[i + 7][:3] += (np.random.rand(3) - 0.5) * FREE_SWIMMING_FORCE
 
 
 ########################################################################################################################
