@@ -1,7 +1,8 @@
 import numpy as np
 from settings import get_settings
 
-N_OBJECTS, BALL_SIZE, BOX_SIZE, XML_PATH, MASSES, CHARGES, VALENCE_E, VALENCE_E_CAP = get_settings()
+N_OBJECTS, BALL_SIZE, BOX_SIZE, XML_PATH, \
+MASSES, CHARGES, VALENCE_E, VALENCE_E_CAP, ELECTRONEG = get_settings()
 
 def arr_to_spaced(arr):
     return ' '.join(str(x) for x in arr)

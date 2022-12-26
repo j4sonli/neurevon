@@ -4,21 +4,28 @@ import numpy as np
 from settings import get_settings
 from generate_xml import generate_XML_file
 
-N_OBJECTS, BALL_SIZE, BOX_SIZE, XML_PATH, MASSES, CHARGES, VALENCE_E, VALENCE_E_CAP = get_settings()
+N_OBJECTS, BALL_SIZE, BOX_SIZE, XML_PATH, \
+MASSES, CHARGES, VALENCE_E, VALENCE_E_CAP, ELECTRONEG = get_settings()
 
 generate_XML_file()
 
 sim_time = 180  # seconds
 print_camera_config = 0  # set to 1 to print camera config
 
-k_e = 1e1  # N m^2 C^(-2)
+k_e = 10  # N m^2 C^(-2)
 EFF_VALENCE_E = VALENCE_E.copy()
 COVALENT_FORCE = 1e4  # N
 COVALENT_BONDS_adj = {}
 COVALENT_BONDS_edge = []
-VSEPR_FORCE = COVALENT_FORCE/5  # N
+VSEPR_FORCE = COVALENT_FORCE / 5  # N
 
 FREE_SWIMMING_FORCE = 1e2  # N
+
+
+def charge_color(charge):
+    max_charge, min_charge = 1, -1
+    rel_charge = (charge - min_charge) / (max_charge - min_charge)
+    return np.array([rel_charge, 0, 1-rel_charge, 1])
 
 
 def add_covalent_bond(i1, i2):
@@ -62,6 +69,12 @@ def controller(model, data):
             EFF_VALENCE_E[i1] += e_to_share
             EFF_VALENCE_E[i2] += e_to_share
             add_covalent_bond(i1, i2)
+            ## add partial charge
+            i1_pref = (ELECTRONEG[i1] - ELECTRONEG[i2]) / 8
+            CHARGES[i1] -= i1_pref
+            CHARGES[i2] += i1_pref
+            model.geom_rgba[i1 + 6] = charge_color(CHARGES[i1])
+            model.geom_rgba[i2 + 6] = charge_color(CHARGES[i2])
     ## attractive covalent force
     for i1, i2 in COVALENT_BONDS_edge:
         v = data.xpos[i1 + 7] - data.xpos[i2 + 7]
@@ -75,6 +88,7 @@ def controller(model, data):
                 data.xfrc_applied[adj[i] + 7][:3] += v * VSEPR_FORCE
                 data.xfrc_applied[adj[j] + 7][:3] += -v * VSEPR_FORCE
 
+    ## unbonded atoms keep moving
     for i in range(N_OBJECTS):
         if i not in COVALENT_BONDS_adj.keys():
             data.xfrc_applied[i + 7][:3] += (np.random.rand(3) - 0.5) * FREE_SWIMMING_FORCE
